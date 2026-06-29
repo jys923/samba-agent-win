@@ -1,0 +1,17 @@
+[Unit]
+Description=winagent - Windows fileserver remote management REST API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/winagent
+Environment="WINRM_HOST=192.168.0.25"
+Environment="WINRM_USER=Administrator"
+Environment="WINRM_PASSWORD=changeme"
+Environment="WINRM_TRANSPORT=ntlm"
+Environment="WINDOWS_SHARE_BASE_PATH=C:\\Shares"
+ExecStart=/opt/winagent/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
