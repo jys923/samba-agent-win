@@ -8,6 +8,7 @@ PowerShell 문법을 직접 다루지 않는다 — WinRM 라이브러리를 나
 이미 검증된 상태여야 한다 (방어선은 dto에서 한 번 더 걸지만,
 이 계층에서도 검증되지 않은 원시 입력을 직접 받지 않는다).
 """
+import json
 import winrm
 from config import WINRM_HOST, WINRM_USER, WINRM_PASSWORD, WINRM_TRANSPORT
 from domain.permission import to_ntfs_rights, to_access_control_type, INHERITANCE_FLAGS, PROPAGATION_FLAGS
@@ -31,6 +32,17 @@ class WinRMClient:
             raise WinRMError(result.std_err.decode(errors="replace"))
         return result.std_out.decode(errors="replace")
 
+    def _run_ps_json(self, script: str) -> list:
+        """ConvertTo-Json 출력을 실제 Python list로 파싱해서 돌려준다.
+        PowerShell의 ConvertTo-Json은 결과가 1건이면 배열이 아니라 단일
+        객체를 내려주는 특성이 있어, 호출하는 쪽이 매번 그 경우를 신경
+        쓰지 않도록 여기서 항상 list로 정규화한다."""
+        raw = self._run_ps(script).strip()
+        if not raw:
+            return []
+        data = json.loads(raw)
+        return data if isinstance(data, list) else [data]
+
     # ---------- 사용자 ----------
     def create_user(self, username: str, password: str):
         script = (
@@ -42,8 +54,16 @@ class WinRMClient:
     def delete_user(self, username: str):
         return self._run_ps(f'Remove-LocalUser -Name "{username}"')
 
-    def list_users(self):
-        return self._run_ps("Get-LocalUser | Select-Object Name, Enabled | ConvertTo-Json")
+    def list_users(self) -> list:
+        # krbtgt(AD 시스템 계정), "이름$"로 끝나는 컴퓨터 계정은 우리가 만든
+        # 업무용 계정이 아니므로 PowerShell 단계에서 미리 제외한다.
+        script = (
+            "Get-LocalUser "
+            "| Where-Object { $_.Name -notlike '*$' -and $_.Name -ne 'krbtgt' } "
+            "| Select-Object Name, Enabled "
+            "| ConvertTo-Json"
+        )
+        return self._run_ps_json(script)
 
     def set_password(self, username: str, password: str):
         script = (
@@ -59,8 +79,8 @@ class WinRMClient:
     def delete_group(self, group_name: str):
         return self._run_ps(f'Remove-LocalGroup -Name "{group_name}"')
 
-    def list_groups(self):
-        return self._run_ps("Get-LocalGroup | Select-Object Name | ConvertTo-Json")
+    def list_groups(self) -> list:
+        return self._run_ps_json("Get-LocalGroup | Select-Object Name | ConvertTo-Json")
 
     def add_member(self, group_name: str, username: str):
         return self._run_ps(
@@ -72,8 +92,8 @@ class WinRMClient:
             f'Remove-LocalGroupMember -Group "{group_name}" -Member "{username}"'
         )
 
-    def list_members(self, group_name: str):
-        return self._run_ps(
+    def list_members(self, group_name: str) -> list:
+        return self._run_ps_json(
             f'Get-LocalGroupMember -Group "{group_name}" | Select-Object Name | ConvertTo-Json'
         )
 
