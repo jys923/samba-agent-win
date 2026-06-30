@@ -1,16 +1,20 @@
 """
-share_name / group_name / username 등 WinRM(PowerShell)으로 그대로 전달되는
-모든 식별자는 여기를 거쳐야 함. 쉘 인젝션 문자(;, &, |, `, $() 등)가
-섞여 들어오는 것을 막기 위해 화이트리스트(허용 문자만 통과) 방식으로 검증한다.
-블랙리스트(특수문자 하나씩 막기) 방식은 빠뜨리는 문자가 항상 생기므로 사용하지 않음.
+WinRM(PowerShell)으로 그대로 전달되는 모든 식별자와 권한값은
+여기서 화이트리스트 방식으로 검증한다.
+블랙리스트(특수문자를 하나씩 막기)는 빠뜨리는 문자가 생기므로 사용 안 함.
 """
 import re
+from domain.permission import VALID_PERMISSIONS, VALID_ACCESS_TYPES
 
 # 영문/숫자/언더스코어/하이픈만 허용, 1~64자
 NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
 class InvalidNameError(ValueError):
+    pass
+
+
+class InvalidPermissionError(ValueError):
     pass
 
 
@@ -22,13 +26,25 @@ def validate_name(value: str, field: str = "name") -> str:
     return value
 
 
-# permission 값도 화이트리스트로 제한 (read/write/full/deny 외엔 거부)
-ALLOWED_PERMISSIONS = {"read", "write", "full", "deny"}
+def validate_permissions(permissions: list[str]) -> list[str]:
+    """permissions 리스트가 비어있지 않은지, 모두 유효한 FileSystemRights 이름인지 검증."""
+    if not permissions:
+        raise InvalidPermissionError(
+            "permissions는 비어있을 수 없습니다. "
+            f"허용 값: {sorted(VALID_PERMISSIONS)}"
+        )
+    invalid = [p for p in permissions if p not in VALID_PERMISSIONS]
+    if invalid:
+        raise InvalidPermissionError(
+            f"유효하지 않은 permission 값: {invalid}. "
+            f"허용 값: {sorted(VALID_PERMISSIONS)}"
+        )
+    return permissions
 
 
-def validate_permission(value: str) -> str:
-    if value not in ALLOWED_PERMISSIONS:
-        raise InvalidNameError(
-            f"permission은 {sorted(ALLOWED_PERMISSIONS)} 중 하나여야 합니다: {value!r}"
+def validate_access_type(value: str) -> str:
+    if value not in VALID_ACCESS_TYPES:
+        raise InvalidPermissionError(
+            f"access_type은 {sorted(VALID_ACCESS_TYPES)} 중 하나여야 합니다: {value!r}"
         )
     return value

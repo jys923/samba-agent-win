@@ -8,11 +8,12 @@ router = APIRouter(prefix="/acl", tags=["acl"])
 
 @router.post("")
 def grant_acl(req: AclGrantRequest, svc: AclService = Depends(get_acl_service)):
-    svc.grant(req.share_name, req.group, req.permission)
+    svc.grant(req.share_name, req.group, req.permissions, req.access_type)
     return {
         "share_name": req.share_name,
         "group": req.group,
-        "permission": req.permission,
+        "permissions": req.permissions,
+        "access_type": req.access_type,
         "granted": True,
     }
 

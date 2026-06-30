@@ -11,7 +11,7 @@ PowerShell 문법을 직접 다루지 않는다 — WinRM 라이브러리를 나
 import json
 import winrm
 from config import WINRM_HOST, WINRM_USER, WINRM_PASSWORD, WINRM_TRANSPORT
-from domain.permission import to_ntfs_rights, to_access_control_type, INHERITANCE_FLAGS, PROPAGATION_FLAGS
+from domain.permission import INHERITANCE_FLAGS, PROPAGATION_FLAGS
 
 
 class WinRMError(RuntimeError):
@@ -127,13 +127,19 @@ Remove-Item -Path "{disk_path}" -Recurse -Force -ErrorAction SilentlyContinue
         return self._run_ps(script)
 
     # ---------- ACL ----------
-    def grant_acl(self, disk_path: str, group: str, permission: str):
-        rights = to_ntfs_rights(permission)
-        control_type = to_access_control_type(permission)
+    def grant_acl(self, disk_path: str, group: str, permissions: list[str], access_type: str):
+        """
+        permissions: FileSystemRights 이름 리스트 (예: ["ReadData", "WriteData"])
+        access_type: "Allow" 또는 "Deny"
+
+        PowerShell에서 여러 권한을 조합할 때는 쉼표로 이어 붙인 문자열
+        ("ReadData,WriteData")을 FileSystemRights에 넘기면 자동 OR 합산됨.
+        """
+        rights_combined = ",".join(permissions)
         script = f"""
 $acl = Get-Acl "{disk_path}"
 $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-    "{group}", "{rights}", "{INHERITANCE_FLAGS}", "{PROPAGATION_FLAGS}", "{control_type}"
+    "{group}", "{rights_combined}", "{INHERITANCE_FLAGS}", "{PROPAGATION_FLAGS}", "{access_type}"
 )
 $acl.AddAccessRule($rule)
 Set-Acl "{disk_path}" $acl
@@ -149,3 +155,39 @@ $acl.Access | Where-Object {{ $_.IdentityReference -like "*{group}" }} | ForEach
 Set-Acl "{disk_path}" $acl
 """
         return self._run_ps(script)
+
+    # ---------- 전체 공유 조회 ----------
+    def list_shares(self) -> list:
+        """
+        C:\Shares 밑의 모든 하위 폴더를 한 번의 WinRM 호출로 훑어서
+        공유 이름 + NTFS ACL 목록을 반환한다.
+        Get-ChildItem + Get-Acl을 PowerShell 반복문 안에서 처리하므로
+        WinRM 왕복은 항상 1번.
+        Administrators / SYSTEM 같은 시스템 계정은 필터링해서 제외한다.
+        """
+        from config import WINDOWS_SHARE_BASE_PATH
+        script = f"""
+$result = @()
+Get-ChildItem -Path "{WINDOWS_SHARE_BASE_PATH}" -Directory -ErrorAction SilentlyContinue | ForEach-Object {{
+    $folder = $_
+    $acl = Get-Acl $folder.FullName
+    $acls = $acl.Access | Where-Object {{
+        $_.IdentityReference -notlike "BUILTIN\\*" -and
+        $_.IdentityReference -notlike "NT AUTHORITY\\*" -and
+        $_.IdentityReference -ne "CREATOR OWNER"
+    }} | ForEach-Object {{
+        @{{
+            Identity   = $_.IdentityReference.ToString()
+            Rights     = $_.FileSystemRights.ToString()
+            AccessType = $_.AccessControlType.ToString()
+        }}
+    }}
+    $result += @{{
+        ShareName = $folder.Name
+        Path      = $folder.FullName
+        Acls      = @($acls)
+    }}
+}}
+$result | ConvertTo-Json -Depth 5
+"""
+        return self._run_ps_json(script)
