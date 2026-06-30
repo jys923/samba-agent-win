@@ -26,11 +26,19 @@ class WinRMClient:
             transport=WINRM_TRANSPORT,  # "ntlm" 또는 "basic" (basic이면 https 필수)
         )
 
+    # 모든 PowerShell 스크립트 실행 전에 출력 인코딩을 UTF-8로 강제한다.
+    # 안 해두면 윈도우 서버 로케일(보통 CP949/EUC-KR)로 출력되어 한글이
+    # ?로 깨진 채로 넘어온다 (errors="replace" 때문에 깨진 자리가 ?로 채워짐).
+    _UTF8_PREFIX = (
+        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n"
+        "$OutputEncoding = [System.Text.Encoding]::UTF8\n"
+    )
+
     def _run_ps(self, script: str):
-        result = self._session.run_ps(script)
+        result = self._session.run_ps(self._UTF8_PREFIX + script)
         if result.status_code != 0:
-            raise WinRMError(result.std_err.decode(errors="replace"))
-        return result.std_out.decode(errors="replace")
+            raise WinRMError(result.std_err.decode("utf-8", errors="replace"))
+        return result.std_out.decode("utf-8", errors="replace")
 
     def _run_ps_json(self, script: str) -> list:
         """ConvertTo-Json 출력을 실제 Python list로 파싱해서 돌려준다.
