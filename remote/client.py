@@ -159,7 +159,7 @@ Set-Acl "{disk_path}" $acl
     # ---------- 전체 공유 조회 ----------
     def list_shares(self) -> list:
         """
-        C:\Shares 밑의 모든 하위 폴더를 한 번의 WinRM 호출로 훑어서
+        C:\Shares 밑의 1단계 폴더(=각 공유)를 한 번의 WinRM 호출로 훑어서
         공유 이름 + NTFS ACL 목록을 반환한다.
         Get-ChildItem + Get-Acl을 PowerShell 반복문 안에서 처리하므로
         WinRM 왕복은 항상 1번.
@@ -177,9 +177,10 @@ Get-ChildItem -Path "{WINDOWS_SHARE_BASE_PATH}" -Directory -ErrorAction Silently
         $_.IdentityReference -ne "CREATOR OWNER"
     }} | ForEach-Object {{
         @{{
-            Identity   = $_.IdentityReference.ToString()
-            Rights     = $_.FileSystemRights.ToString()
-            AccessType = $_.AccessControlType.ToString()
+            Identity    = $_.IdentityReference.ToString()
+            Rights      = $_.FileSystemRights.ToString()
+            AccessType  = $_.AccessControlType.ToString()
+            IsInherited = $_.IsInherited
         }}
     }}
     $result += @{{
@@ -191,3 +192,51 @@ Get-ChildItem -Path "{WINDOWS_SHARE_BASE_PATH}" -Directory -ErrorAction Silently
 $result | ConvertTo-Json -Depth 5
 """
         return self._run_ps_json(script)
+
+    # ---------- 특정 공유 상세 조회 (하위 트리 + ACL) ----------
+    def get_share_detail(self, share_name: str, disk_path: str) -> dict:
+        """
+        특정 공유(disk_path) 밑의 모든 하위 폴더를 재귀적으로 훑어서
+        각 폴더의 경로 + ACL 목록을 반환한다. 한 번의 WinRM 호출로 처리
+        (Get-ChildItem -Recurse + Get-Acl 반복문, 왕복 1번).
+
+        주의: 하위 폴더는 대부분 우리 API로 만든 게 아니라 사용자가 탐색기로
+        직접 만든 것이라, 별도 ACL을 걸지 않은 이상 부모 권한을 그대로
+        상속받는다. 그 경우 결과의 Acls 항목은 부모와 동일한 내용에
+        IsInherited: true 로 표시되어 나온다 (비어있는 게 아님 — 상속된
+        규칙도 Get-Acl에 그대로 포함됨).
+        """
+        script = f"""
+$root = Get-Item -Path "{disk_path}" -ErrorAction Stop
+$folders = @($root) + @(Get-ChildItem -Path "{disk_path}" -Directory -Recurse -ErrorAction SilentlyContinue)
+
+$result = @()
+foreach ($folder in $folders) {{
+    $acl = Get-Acl $folder.FullName
+    $acls = $acl.Access | Where-Object {{
+        $_.IdentityReference -notlike "BUILTIN\\*" -and
+        $_.IdentityReference -notlike "NT AUTHORITY\\*" -and
+        $_.IdentityReference -ne "CREATOR OWNER"
+    }} | ForEach-Object {{
+        @{{
+            Identity    = $_.IdentityReference.ToString()
+            Rights      = $_.FileSystemRights.ToString()
+            AccessType  = $_.AccessControlType.ToString()
+            IsInherited = $_.IsInherited
+        }}
+    }}
+    $result += @{{
+        RelativePath = $folder.FullName.Substring($root.FullName.Length).TrimStart('\\')
+        Path         = $folder.FullName
+        Acls         = @($acls)
+    }}
+}}
+
+@{{
+    ShareName = "{share_name}"
+    RootPath  = $root.FullName
+    Folders   = @($result)
+}} | ConvertTo-Json -Depth 6
+"""
+        raw = self._run_ps(script).strip()
+        return json.loads(raw) if raw else {}
