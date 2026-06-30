@@ -1,5 +1,4 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 pywinrm==0.4.3
-SQLAlchemy==2.0.35
 pydantic==2.9.2

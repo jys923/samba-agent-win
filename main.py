@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from repository.database import init_db
 from core.validators import InvalidNameError, InvalidPermissionError
 from remote.client import WinRMError
 from application.folder_service import FolderNotFoundError, FolderAlreadyExistsError
@@ -13,11 +12,6 @@ app.include_router(groups.router)
 app.include_router(folders.router)
 app.include_router(acl.router)
 app.include_router(shares.router)
-
-
-@app.on_event("startup")
-def on_startup():
-    init_db()
 
 
 @app.exception_handler(InvalidNameError)

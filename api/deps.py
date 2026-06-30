@@ -1,6 +1,4 @@
 from fastapi import Depends
-from sqlalchemy.orm import Session
-from repository.database import get_db
 from remote.client import WinRMClient
 from application.user_service import UserService
 from application.group_service import GroupService
@@ -23,10 +21,8 @@ def get_group_service(client: WinRMClient = Depends(get_winrm_client)) -> GroupS
     return GroupService(client)
 
 
-def get_folder_service(
-    client: WinRMClient = Depends(get_winrm_client), db: Session = Depends(get_db)
-) -> FolderService:
-    return FolderService(client, db)
+def get_folder_service(client: WinRMClient = Depends(get_winrm_client)) -> FolderService:
+    return FolderService(client)
 
 
 def get_acl_service(

@@ -98,6 +98,10 @@ class WinRMClient:
         )
 
     # ---------- 폴더 + 공유 (Default Deny로 생성) ----------
+    def folder_exists(self, disk_path: str) -> bool:
+        script = f'if (Test-Path -Path "{disk_path}") {{ "true" }} else {{ "false" }}'
+        return self._run_ps(script).strip().lower() == "true"
+
     def create_folder_and_share(self, share_name: str, disk_path: str):
         script = f"""
 New-Item -Path "{disk_path}" -ItemType Directory -Force | Out-Null
@@ -125,6 +129,7 @@ Remove-SmbShare -Name "{share_name}" -Force -ErrorAction SilentlyContinue
 Remove-Item -Path "{disk_path}" -Recurse -Force -ErrorAction SilentlyContinue
 """
         return self._run_ps(script)
+
 
     # ---------- ACL ----------
     def grant_acl(self, disk_path: str, group: str, permissions: list[str], access_type: str):

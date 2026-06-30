@@ -1,19 +1,16 @@
-from sqlalchemy.orm import Session
 from remote.client import WinRMClient
-from repository.folder_repo import FolderRepository
-from application.folder_service import FolderNotFoundError
+from application.folder_service import to_disk_path, FolderNotFoundError
 
 
 class SharesService:
-    def __init__(self, client: WinRMClient, db: Session):
+    def __init__(self, client: WinRMClient):
         self.client = client
-        self.repo = FolderRepository(db)
 
     def list_shares(self) -> list:
         return self.client.list_shares()
 
     def get_share_detail(self, share_name: str) -> dict:
-        mapping = self.repo.get_by_share_name(share_name)
-        if mapping is None:
+        disk_path = to_disk_path(share_name)
+        if not self.client.folder_exists(disk_path):
             raise FolderNotFoundError(share_name)
-        return self.client.get_share_detail(share_name, mapping.disk_path)
+        return self.client.get_share_detail(share_name, disk_path)

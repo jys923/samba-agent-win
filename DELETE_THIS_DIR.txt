@@ -1,0 +1,8 @@
+이 zip을 풀어서 덮어쓴 뒤, repository/ 디렉토리를 수동으로 삭제하세요:
+  rm -rf apps/samba-agent-win/repository
+  rm -f apps/samba-agent-win/winagent.db   (있다면)
+
+DB(SQLite) 의존을 완전히 제거했습니다 — 이제 share_name 존재 여부는
+항상 윈도우에 Test-Path로 직접 물어봅니다. requirements.txt에서도
+SQLAlchemy가 빠졌으니, LXC에서 재배포(11b) 시 venv를 새로 만들거나
+pip install -r requirements.txt를 다시 돌리는 걸 권장합니다.
